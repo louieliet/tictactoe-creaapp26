@@ -6,148 +6,171 @@
 //
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SESIÓN 1: Fundamentos de Swift + Tablero base
+// SESIÓN 2: Estado reactivo en SwiftUI + Turnos X/O
 // ─────────────────────────────────────────────────────────────────────────────
 // En esta sesión aprendemos:
-//   · Variables (var) y constantes (let)
-//   · Tipos básicos: String, Int, Bool
-//   · Arreglos (Array) y acceso por índice
-//   · Condicional básico (if / else)
-//   · Estructura de una vista en SwiftUI
+//   · @State: cómo un valor que cambia actualiza la UI automáticamente
+//   · Propiedades computadas: valores que se calculan a partir de otros
+//   · Closures como parámetros: pasar funciones como si fueran datos
+//   · guard: salida anticipada para manejar condiciones inválidas
+//   · private: control de acceso, quién puede ver qué dentro de un struct
+//   · Modifiers de jerarquía visual: background, clipShape, padding avanzado
 // ─────────────────────────────────────────────────────────────────────────────
 
-// "import" le dice a Swift que vamos a usar un conjunto de herramientas ya creadas.
-// SwiftUI es el framework de Apple para construir interfaces visuales con código.
-// Sin esta línea el compilador no conocería nada: ni View, ni Text, ni VStack.
+// Mismo import de siempre: necesitamos SwiftUI para todo lo visual y los
+// property wrappers como @State que veremos en esta sesión.
 import SwiftUI
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CONSTANTES GLOBALES DEL JUEGO
+// CONSTANTE GLOBAL
 // ─────────────────────────────────────────────────────────────────────────────
 
-// "let" declara una CONSTANTE: un valor que NO puede cambiar una vez asignado.
-// Úsala para datos fijos: títulos, reglas, configuración del juego.
-// Si intentas modificarla después, Xcode te dará un error de compilación.
+// El título del juego nunca cambia: sigue siendo una constante global (let).
+// Contraste con @State que veremos abajo: @State es para datos QUE SÍ cambian.
 let tituloJuego: String = "Tic Tac Toe"
-
-// "var" declara una VARIABLE: un valor que SÍ puede cambiar en cualquier momento.
-// El número de partidas jugadas puede crecer, por eso usamos "var".
-// Comparación clave: let = pared de concreto, var = pizarrón borrable.
-var partidasJugadas: Int = 0
-
-// Un ARREGLO (Array) es una lista ordenada de elementos del mismo tipo.
-// Aquí representamos las 9 celdas del tablero: índice 0 = esquina superior izq,
-// índice 8 = esquina inferior derecha. La lectura es de izquierda a derecha:
-//   [0][1][2]
-//   [3][4][5]
-//   [6][7][8]
-// "" (cadena vacía) significa que esa celda aún no ha sido jugada.
-// Bool que usaremos para ilustrar el tipo: true = partida activa, false = terminada.
-let partidaActiva: Bool = true
-
-// Separamos el tablero inicial como constante porque los valores de inicio
-// siempre serán los mismos: 9 celdas vacías.
-let tableroInicial: [String] = ["", "", "", "", "", "", "", "", ""]
 
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VISTA PRINCIPAL
 // ─────────────────────────────────────────────────────────────────────────────
 
-// "struct" define una ESTRUCTURA: un molde con datos y comportamiento.
-// Es el bloque de construcción más común en Swift (junto con "class").
-// "ContentView" es el nombre de esta pantalla. Podemos tener muchas vistas.
-// ": View" significa que cumple el PROTOCOLO View de SwiftUI, es decir,
-// esta estructura "promete" tener una propiedad llamada "body" que describe la UI.
 struct ContentView: View {
 
-    // "body" es la propiedad requerida por el protocolo View.
-    // "var" porque SwiftUI necesita poder leerla en cualquier momento.
-    // "some View" es un tipo opaco: significa "devuelve algún tipo de vista",
-    // y Swift infiere cuál exactamente. No necesitamos especificarlo nosotros.
+    // ─── ESTADO DEL JUEGO ────────────────────────────────────────────────────
+    //
+    // @State es un PROPERTY WRAPPER: una capa especial que envuelve una variable
+    // y le da superpoderes. Cuando su valor cambia, SwiftUI vuelve a dibujar
+    // la vista AUTOMÁTICAMENTE. Sin @State, cambiar un valor no actualizaría
+    // nada visible en pantalla.
+    //
+    // Regla de oro: si un dato cambia Y la UI debe reflejarlo → usa @State.
+    //
+    // "private" significa que esta propiedad SOLO puede usarse dentro de
+    // ContentView. Nadie más puede leerla ni modificarla desde afuera.
+    // Buena práctica: encapsula el estado para que nadie lo modifique por error.
+    //
+    // Array(repeating: "", count: 9) crea un arreglo de 9 cadenas vacías.
+    // Es equivalente a escribir ["","","","","","","","",""] pero más expresivo
+    // y fácil de modificar si el tablero cambiara de tamaño.
+    @State private var tablero: [String] = Array(repeating: "", count: 9)
+
+    // El jugador que tiene el turno actual: empieza en "X".
+    // @State porque cambia con cada jugada y la UI debe reflejarlo.
+    @State private var turnoActual: String = "X"
+
+    // ─── PROPIEDADES COMPUTADAS ───────────────────────────────────────────────
+    //
+    // Una PROPIEDAD COMPUTADA no almacena un valor: lo CALCULA cada vez que
+    // alguien la lee, a partir de otras propiedades existentes.
+    // No necesita @State porque no guarda nada, solo transforma lo que ya existe.
+    //
+    // "var colorTurno: Color" calcula el color del jugador actual.
+    // Si turnoActual es "X" → azul; si es "O" → rojo.
+    // Cada vez que turnoActual cambie (por @State), colorTurno devolverá
+    // el color correcto sin que tengamos que hacer nada extra.
+    private var colorTurno: Color {
+        turnoActual == "X" ? .blue : .red
+    }
+
+    // ─── INTERFAZ ─────────────────────────────────────────────────────────────
+
     var body: some View {
 
-        // VStack es un contenedor que apila sus hijos en sentido VERTICAL (↓).
-        // "spacing: 24" agrega 24 puntos de espacio entre cada elemento hijo.
-        // Sin spacing, los elementos quedarían pegados entre sí.
         VStack(spacing: 24) {
 
             // MARK: Título
-            // "Text" es la vista más básica de SwiftUI: muestra una cadena en pantalla.
-            // Pasamos la constante "tituloJuego" en lugar de texto literal para
-            // demostrar el uso de constantes dentro de una vista.
+            // Igual que en sesión 1: constante, no necesita @State.
             Text(tituloJuego)
-                // Los "modifiers" son métodos que aplican cambios al aspecto de la vista.
-                // Se encadenan con punto (.) y cada uno devuelve una vista modificada.
-                // ".font" controla el tamaño tipográfico con valores semánticos:
-                // .caption (pequeño) → .body → .title → .largeTitle (grande)
                 .font(.largeTitle)
-                // ".fontWeight" controla el grosor del texto.
                 .fontWeight(.bold)
 
-            // MARK: Indicador de turno
-            // Por ahora mostramos un texto fijo "Turno de: X".
-            // En la sesión 2 este texto cambiará dinámicamente con @State.
-            // Este es un buen ejemplo de algo que HOY es constante y MAÑANA será variable.
-            Text("Turno de: X")
+            // MARK: Indicador de turno (ahora dinámico)
+            // En sesión 1 este texto era fijo: "Turno de: X".
+            // Ahora usamos interpolación de cadenas "\(turnoActual)" para que
+            // el texto se actualice automáticamente cuando @State cambie.
+            // colorTurno también cambia automáticamente gracias a la propiedad computada.
+            Text("Turno de: \(turnoActual)")
                 .font(.title3)
-                // ".foregroundStyle" controla el color del contenido de la vista.
-                // ".secondary" es un color del sistema que se adapta solo
-                // al modo claro u oscuro del dispositivo (no necesitamos hacer nada extra).
-                .foregroundStyle(.secondary)
+                .fontWeight(.semibold)
+                // Usamos colorTurno (propiedad computada) en lugar de un color fijo.
+                .foregroundStyle(colorTurno)
+                // ".padding(.horizontal, 20)" agrega 20 puntos de espacio solo a los lados.
+                // ".padding(.vertical, 8)" agrega 8 puntos arriba y abajo.
+                // Juntos crean el efecto de "pastilla" alrededor del texto.
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                // ".background" aplica un fondo a la vista.
+                // Usamos el mismo colorTurno con baja opacidad para crear consistencia visual.
+                .background(colorTurno.opacity(0.12))
+                // ".clipShape(Capsule())" recorta la vista en forma de cápsula (rectángulo
+                // con extremos completamente redondeados). Crea el efecto de "badge" o "chip".
+                .clipShape(Capsule())
 
             // MARK: Tablero 3x3
-            // Definimos las columnas del grid. Cada "GridItem" representa una columna.
-            // ".flexible()" le dice a SwiftUI que reparta el espacio disponible
-            // de forma equitativa entre las tres columnas.
+            // Las columnas no cambian: siguen siendo 3 columnas flexibles.
             let columnas = [
                 GridItem(.flexible()),
                 GridItem(.flexible()),
                 GridItem(.flexible())
             ]
 
-            // LazyVGrid organiza vistas en FILAS Y COLUMNAS (cuadrícula).
-            // "Lazy" significa que solo construye las celdas que son visibles:
-            // muy eficiente en memoria cuando hay muchos elementos.
-            // "spacing: 8" agrega 8 puntos de espacio vertical entre filas.
             LazyVGrid(columns: columnas, spacing: 8) {
 
-                // "ForEach" itera sobre una colección y genera UNA vista por elemento.
-                // "0..<9" es un RANGO del 0 al 8 (el operador "..<" excluye el límite superior).
-                // "id: \.self" le dice a SwiftUI cómo identificar cada elemento de forma única,
-                // necesario para que la UI pueda actualizar sólo las celdas que cambien.
                 ForEach(0..<9, id: \.self) { indice in
 
-                    // Por cada índice del 0 al 8 creamos una CeldaView.
-                    // Le pasamos el contenido que tiene el tablero en esa posición.
-                    // Acceder a un arreglo por índice: tableroInicial[indice]
-                    // Si el índice no existe, Swift lanza un error en tiempo de ejecución.
-                    CeldaView(contenido: tableroInicial[indice], indice: indice)
+                    // NOVEDAD DE SESIÓN 2: ahora pasamos "alTocar" a cada celda.
+                    // "alTocar" es un CLOSURE: una función que le pasamos como parámetro.
+                    // "{ jugarCelda(en: indice) }" es la función que se ejecutará
+                    // cuando el usuario toque esa celda específica.
+                    // Así CeldaView no necesita saber nada del juego:
+                    // solo avisa "me tocaron" y ContentView decide qué hacer.
+                    CeldaView(
+                        contenido: tablero[indice],
+                        indice: indice,
+                        alTocar: { jugarCelda(en: indice) }
+                    )
                 }
             }
-            // ".padding(.horizontal)" agrega espacio solo a los lados (izquierda y derecha).
-            // Evita que el tablero toque los bordes físicos de la pantalla.
             .padding(.horizontal)
-
-            // MARK: Información de sesión (solo educativo)
-            // Mostramos algunas variables para que los alumnos vean su valor en pantalla.
-            // "\(variable)" es INTERPOLACIÓN DE CADENAS: incrusta el valor de una variable
-            // dentro de un String usando la sintaxis \( ).
-            VStack(spacing: 4) {
-                Text("Partidas jugadas: \(partidasJugadas)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                // El OPERADOR TERNARIO es un "if" compacto en una sola línea:
-                // condición ? valor_si_true : valor_si_false
-                // Es equivalente a escribir un if/else completo pero más conciso.
-                Text("Partida activa: \(partidaActiva ? "Sí" : "No")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
-        // ".padding()" sin parámetros agrega espacio uniforme en los 4 lados del VStack.
         .padding()
+    }
+
+    // ─── LÓGICA DEL JUEGO ─────────────────────────────────────────────────────
+
+    // "func" define una FUNCIÓN: un bloque de código con nombre que podemos
+    // reutilizar. Esta función contiene la lógica de "jugar una celda".
+    // Separar lógica de UI es fundamental: el body describe CÓMO SE VE,
+    // las funciones describen QUÉ HACE el juego.
+    //
+    // "private" porque nadie fuera de ContentView debe poder llamar esta función.
+    // "en indice: Int" es el parámetro: recibe el índice de la celda tocada.
+    // La etiqueta "en" hace que la llamada se lea como lenguaje natural:
+    // jugarCelda(en: 4) → "jugar celda en posición 4"
+    private func jugarCelda(en indice: Int) {
+
+        // "guard" es la herramienta de SALIDA ANTICIPADA de Swift.
+        // Evalúa una condición y, si NO se cumple, ejecuta el bloque "else { return }".
+        // "return" detiene la función inmediatamente, sin ejecutar el resto.
+        //
+        // guard tablero[indice].isEmpty → "la celda debe estar vacía para jugar"
+        // Si la celda YA tiene "X" u "O", no cumple la condición → salimos.
+        // Esto bloquea que un jugador sobreescriba una celda ya jugada.
+        //
+        // Comparación: podríamos escribir "if !tablero[indice].isEmpty { return }"
+        // pero guard hace la INTENCIÓN más clara: estamos GARANTIZANDO una condición.
+        guard tablero[indice].isEmpty else { return }
+
+        // Si llegamos aquí, la celda estaba vacía y es válida jugarla.
+        // Modificamos el arreglo @State: SwiftUI detecta el cambio y redibuja la UI.
+        // tablero[indice] = turnoActual → ponemos "X" o "O" en esa posición.
+        tablero[indice] = turnoActual
+
+        // Cambiamos de turno usando el operador ternario:
+        // Si era "X" → pasa a "O"; si era "O" → pasa a "X".
+        // Al modificar turnoActual (@State), el indicador de turno se actualiza solo.
+        turnoActual = turnoActual == "X" ? "O" : "X"
     }
 }
 
@@ -156,69 +179,67 @@ struct ContentView: View {
 // VISTA DE CELDA INDIVIDUAL
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Separar la celda en su propio struct es una práctica importante:
-// → Responsabilidad única: esta vista SOLO sabe mostrarse a sí misma.
-// → Reutilizable: podemos crear tantas CeldaView como necesitemos.
-// → Legible: ContentView queda limpio y fácil de leer.
-// Este es el primer principio de POO que veremos en el taller.
+// CeldaView sigue siendo un struct independiente (responsabilidad única).
+// CAMBIO DE SESIÓN 2: ahora recibe "alTocar", un closure que ejecuta
+// cuando el usuario toca la celda. Así la lógica queda en ContentView
+// y CeldaView solo sabe mostrarse y avisar cuando la tocan.
 struct CeldaView: View {
 
-    // Propiedades constantes: la celda recibe estos datos desde quien la crea (ContentView).
-    // Este patrón se llama "paso de datos de padre a hijo" (parent → child).
-    // "let" porque la vista no modifica estos valores, solo los muestra.
     let contenido: String  // Qué tiene la celda: "", "X" o "O"
-    let indice: Int        // Qué posición del tablero representa (0-8)
+    let indice: Int        // Posición en el tablero (0-8)
+
+    // "alTocar: () -> Void" es un CLOSURE como propiedad.
+    // "()" → la función no recibe ningún parámetro.
+    // "Void" → la función no devuelve ningún valor (solo ejecuta algo).
+    // Leer como: "alTocar es una función que no recibe nada y no devuelve nada".
+    // Cuando ContentView crea esta celda, le pasa qué hacer al tocarla.
+    let alTocar: () -> Void
+
+    // ─── PROPIEDAD COMPUTADA ──────────────────────────────────────────────────
+    //
+    // El color de fondo de la celda cambia según su contenido:
+    // · Vacía → azul tenue (neutro, invita a jugar)
+    // · "X"   → azul (identidad visual del jugador X)
+    // · "O"   → rojo (identidad visual del jugador O)
+    //
+    // Separar este cálculo en una propiedad computada mantiene el body limpio.
+    // Si mañana queremos cambiar los colores, solo tocamos este lugar.
+    private var colorCelda: Color {
+        if contenido == "X" { return .blue }
+        if contenido == "O" { return .red }
+        return .blue  // vacía: tono neutro azul
+    }
 
     var body: some View {
 
-        // ZStack apila sus hijos en el eje Z (profundidad), uno ENCIMA del otro.
-        // Aquí lo usamos para colocar el texto (X, O o número) sobre el fondo visual.
         ZStack {
 
-            // RoundedRectangle es una figura geométrica: rectángulo con esquinas redondeadas.
-            // "cornerRadius: 12" controla qué tan redondeadas son las esquinas.
-            // A mayor número, más redondeadas (0 = sin redondeo = ángulos rectos).
+            // Fondo de la celda: usa colorCelda (propiedad computada).
+            // El color cambia automáticamente cuando "contenido" cambia,
+            // porque colorCelda se recalcula cada vez que se lee.
             RoundedRectangle(cornerRadius: 12)
-                // ".fill" rellena la figura con un color sólido o semitransparente.
-                // ".opacity(0.12)" hace el color casi transparente.
-                // Escala: 0.0 = completamente invisible, 1.0 = completamente sólido.
-                .fill(.blue.opacity(0.12))
-                // ".aspectRatio(1, contentMode: .fit)" fuerza a que la celda sea CUADRADA.
-                // "1" = razón ancho:alto = 1:1. Si el ancho es 100pt, el alto también será 100pt.
-                // ".fit" indica que debe caber dentro del espacio disponible sin recortarse.
+                .fill(colorCelda.opacity(0.12))
                 .aspectRatio(1, contentMode: .fit)
 
-            // "if / else" evalúa una condición y ejecuta código según el resultado.
-            // Esta es la estructura de control más fundamental en programación.
-            // ".isEmpty" es una propiedad del tipo String que devuelve:
-            //   true  → si la cadena no tiene ningún carácter (ej. "")
-            //   false → si tiene al menos uno (ej. "X", "hola", "123")
             if contenido.isEmpty {
-                // Celda vacía: mostramos el índice en gris tenue.
-                // Esto ayuda a visualizar las posiciones del arreglo durante el taller.
+                // Celda vacía: sutil indicador de posición.
+                // En producción podríamos quitarlo; aquí lo dejamos para el taller.
                 Text("\(indice)")
                     .font(.caption)
                     .foregroundStyle(.gray.opacity(0.35))
             } else {
-                // Celda ocupada: mostramos "X" o "O" en grande.
+                // Celda jugada: muestra "X" o "O" en grande con su color.
                 Text(contenido)
-                    // ".system(size:weight:)" define tamaño y peso tipográfico exactos en puntos.
-                    // Usamos esto cuando los tamaños semánticos (.title, etc.) no son suficientes.
                     .font(.system(size: 48, weight: .bold))
-                    // Operador ternario para colorear según el jugador:
-                    // Si el contenido es "X" → azul, si es cualquier otra cosa → rojo.
                     .foregroundStyle(contenido == "X" ? .blue : .red)
             }
         }
-        // ".onTapGesture" registra una acción que se ejecuta cuando el usuario toca la vista.
-        // El bloque "{ }" es un CLOSURE: una función sin nombre que se ejecuta en ese momento.
-        // Por ahora solo imprimimos en consola para confirmar que el toque funciona.
-        // En sesión 2 aquí irá la lógica real de registrar la jugada.
+        // CAMBIO DE SESIÓN 2: en lugar de print(), llamamos al closure alTocar().
+        // La sintaxis "alTocar()" ejecuta la función que nos pasaron como parámetro.
+        // ContentView decidió qué hace esa función: registrar la jugada.
+        // CeldaView no sabe nada del juego; solo dispara el evento. ← responsabilidad única
         .onTapGesture {
-            // "print()" envía un mensaje a la consola de Xcode (panel inferior "Debug Area").
-            // Es la herramienta más básica de depuración: muestra el estado en cualquier momento.
-            // La interpolación "\(indice)" y "\(contenido)" muestran los valores reales.
-            print("Celda tocada → índice: \(indice) | contenido actual: '\(contenido)'")
+            alTocar()
         }
     }
 }
@@ -228,9 +249,7 @@ struct CeldaView: View {
 // PREVIEW
 // ─────────────────────────────────────────────────────────────────────────────
 
-// #Preview es una macro de Xcode que permite ver la vista en el Canvas
-// sin necesidad de correr el app en el simulador.
-// Solo existe en tiempo de desarrollo; no afecta el app final.
+// Igual que antes: solo para ver la vista en el Canvas de Xcode durante desarrollo.
 #Preview {
     ContentView()
 }
