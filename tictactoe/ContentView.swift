@@ -6,19 +6,19 @@
 //
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SESIÓN 2: Estado reactivo en SwiftUI + Turnos X/O
+// SESIÓN 3: POO básica + Motor de reglas del juego
 // ─────────────────────────────────────────────────────────────────────────────
 // En esta sesión aprendemos:
-//   · @State: cómo un valor que cambia actualiza la UI automáticamente
-//   · Propiedades computadas: valores que se calculan a partir de otros
-//   · Closures como parámetros: pasar funciones como si fueran datos
-//   · guard: salida anticipada para manejar condiciones inválidas
-//   · private: control de acceso, quién puede ver qué dentro de un struct
-//   · Modifiers de jerarquía visual: background, clipShape, padding avanzado
+//   · Separación de responsabilidades: GameLogic.swift vs ContentView.swift
+//   · enum con valores asociados: estado del juego como tipo propio
+//   · switch exhaustivo: cubrir todos los casos de un enum
+//   · if let (optional binding): manejar valores que pueden no existir
+//   · Consumir lógica externa desde la vista (GameLogic.verificarGanador)
+//   · Bloquear la UI cuando el juego termina
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Mismo import de siempre: necesitamos SwiftUI para todo lo visual y los
-// property wrappers como @State que veremos en esta sesión.
+// La lógica del juego ahora vive en GameLogic.swift.
+// ContentView solo se ocupa de la interfaz: consume GameLogic como herramienta.
 import SwiftUI
 
 
@@ -59,18 +59,45 @@ struct ContentView: View {
     // @State porque cambia con cada jugada y la UI debe reflejarlo.
     @State private var turnoActual: String = "X"
 
+    // NOVEDAD SESIÓN 3: estado del juego usando el enum de GameLogic.swift.
+    // @State porque cambia cuando alguien gana o hay empate.
+    // Valor inicial: .jugando (la partida empieza en curso).
+    // El punto antes del caso (.jugando) es la sintaxis de Swift para enums:
+    // no necesitamos escribir EstadoJuego.jugando porque Swift infiere el tipo.
+    @State private var estadoJuego: EstadoJuego = .jugando
+
     // ─── PROPIEDADES COMPUTADAS ───────────────────────────────────────────────
+
+    // "mensajeEstado" calcula el texto del badge según el estado actual del juego.
+    // Usa "switch": la estructura de control que cubre TODOS los casos de un enum.
+    // Swift obliga que el switch sea EXHAUSTIVO: si no cubres un caso, error de compilación.
+    // Eso garantiza que nunca olvidemos manejar un estado posible del juego.
     //
-    // Una PROPIEDAD COMPUTADA no almacena un valor: lo CALCULA cada vez que
-    // alguien la lee, a partir de otras propiedades existentes.
-    // No necesita @State porque no guarda nada, solo transforma lo que ya existe.
-    //
-    // "var colorTurno: Color" calcula el color del jugador actual.
-    // Si turnoActual es "X" → azul; si es "O" → rojo.
-    // Cada vez que turnoActual cambie (por @State), colorTurno devolverá
-    // el color correcto sin que tengamos que hacer nada extra.
-    private var colorTurno: Color {
-        turnoActual == "X" ? .blue : .red
+    // "case .ganador(let jugador)" extrae el valor asociado del enum:
+    // "jugador" recibe el String que guardamos cuando llamamos .ganador(jugador: "X").
+    private var mensajeEstado: String {
+        switch estadoJuego {
+        case .jugando:
+            return "Turno de: \(turnoActual)"
+        case .ganador(let jugador):
+            return "¡\(jugador) ganó!"
+        case .empate:
+            return "¡Empate!"
+        }
+    }
+
+    // "colorEstado" calcula el color del badge según el estado.
+    // Mismo patrón switch: un color por cada estado posible.
+    // .orange para empate da señal visual neutral (ni azul de X ni rojo de O).
+    private var colorEstado: Color {
+        switch estadoJuego {
+        case .jugando:
+            return turnoActual == "X" ? .blue : .red
+        case .ganador(let jugador):
+            return jugador == "X" ? .blue : .red
+        case .empate:
+            return .orange
+        }
     }
 
     // ─── INTERFAZ ─────────────────────────────────────────────────────────────
@@ -85,27 +112,24 @@ struct ContentView: View {
                 .font(.largeTitle)
                 .fontWeight(.bold)
 
-            // MARK: Indicador de turno (ahora dinámico)
-            // En sesión 1 este texto era fijo: "Turno de: X".
-            // Ahora usamos interpolación de cadenas "\(turnoActual)" para que
-            // el texto se actualice automáticamente cuando @State cambie.
-            // colorTurno también cambia automáticamente gracias a la propiedad computada.
-            Text("Turno de: \(turnoActual)")
+            // MARK: Badge de estado (turno o resultado final)
+            // NOVEDAD SESIÓN 3: ya no mostramos solo el turno.
+            // mensajeEstado y colorEstado (propiedades computadas con switch)
+            // calculan automáticamente qué mostrar según EstadoJuego.
+            // Cuando estadoJuego cambie a .ganador o .empate, este badge
+            // se actualiza solo sin ningún código extra aquí.
+            Text(mensajeEstado)
                 .font(.title3)
                 .fontWeight(.semibold)
-                // Usamos colorTurno (propiedad computada) en lugar de un color fijo.
-                .foregroundStyle(colorTurno)
-                // ".padding(.horizontal, 20)" agrega 20 puntos de espacio solo a los lados.
-                // ".padding(.vertical, 8)" agrega 8 puntos arriba y abajo.
-                // Juntos crean el efecto de "pastilla" alrededor del texto.
+                .foregroundStyle(colorEstado)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 8)
-                // ".background" aplica un fondo a la vista.
-                // Usamos el mismo colorTurno con baja opacidad para crear consistencia visual.
-                .background(colorTurno.opacity(0.12))
-                // ".clipShape(Capsule())" recorta la vista en forma de cápsula (rectángulo
-                // con extremos completamente redondeados). Crea el efecto de "badge" o "chip".
+                .background(colorEstado.opacity(0.12))
                 .clipShape(Capsule())
+                // ".animation" aplica una transición suave cuando el valor cambia.
+                // ".default" usa la animación estándar de SwiftUI.
+                // "value: mensajeEstado" le dice a SwiftUI QUÉ cambio debe animar.
+                .animation(.default, value: mensajeEstado)
 
             // MARK: Tablero 3x3
             // Las columnas no cambian: siguen siendo 3 columnas flexibles.
@@ -139,38 +163,47 @@ struct ContentView: View {
 
     // ─── LÓGICA DEL JUEGO ─────────────────────────────────────────────────────
 
-    // "func" define una FUNCIÓN: un bloque de código con nombre que podemos
-    // reutilizar. Esta función contiene la lógica de "jugar una celda".
-    // Separar lógica de UI es fundamental: el body describe CÓMO SE VE,
-    // las funciones describen QUÉ HACE el juego.
-    //
-    // "private" porque nadie fuera de ContentView debe poder llamar esta función.
-    // "en indice: Int" es el parámetro: recibe el índice de la celda tocada.
-    // La etiqueta "en" hace que la llamada se lea como lenguaje natural:
-    // jugarCelda(en: 4) → "jugar celda en posición 4"
     private func jugarCelda(en indice: Int) {
 
-        // "guard" es la herramienta de SALIDA ANTICIPADA de Swift.
-        // Evalúa una condición y, si NO se cumple, ejecuta el bloque "else { return }".
-        // "return" detiene la función inmediatamente, sin ejecutar el resto.
-        //
-        // guard tablero[indice].isEmpty → "la celda debe estar vacía para jugar"
-        // Si la celda YA tiene "X" u "O", no cumple la condición → salimos.
-        // Esto bloquea que un jugador sobreescriba una celda ya jugada.
-        //
-        // Comparación: podríamos escribir "if !tablero[indice].isEmpty { return }"
-        // pero guard hace la INTENCIÓN más clara: estamos GARANTIZANDO una condición.
+        // NOVEDAD SESIÓN 3: primer guard bloquea jugadas cuando la partida terminó.
+        // estadoJuego.estaJugando es la propiedad computada del enum.
+        // Si el juego ya terminó (.ganador o .empate), salimos inmediatamente.
+        // Esto evita que los jugadores sigan tocando celdas después del resultado.
+        guard estadoJuego.estaJugando else { return }
+
+        // Segundo guard: la celda debe estar vacía (igual que sesión 2).
         guard tablero[indice].isEmpty else { return }
 
-        // Si llegamos aquí, la celda estaba vacía y es válida jugarla.
-        // Modificamos el arreglo @State: SwiftUI detecta el cambio y redibuja la UI.
-        // tablero[indice] = turnoActual → ponemos "X" o "O" en esa posición.
+        // Registramos la jugada en el tablero.
         tablero[indice] = turnoActual
 
-        // Cambiamos de turno usando el operador ternario:
-        // Si era "X" → pasa a "O"; si era "O" → pasa a "X".
-        // Al modificar turnoActual (@State), el indicador de turno se actualiza solo.
-        turnoActual = turnoActual == "X" ? "O" : "X"
+        // NOVEDAD SESIÓN 3: verificamos si alguien ganó tras esta jugada.
+        //
+        // "if let ganador = GameLogic.verificarGanador(en: tablero)" es OPTIONAL BINDING.
+        // verificarGanador devuelve String? (un optional: puede ser "X", "O", o nil).
+        // "if let" desenvuelve el optional: si hay valor, lo asigna a "ganador" y entra.
+        // Si devuelve nil (no hay ganador), omite ese bloque y evalúa el siguiente.
+        //
+        // Usamos GameLogic (el struct del otro archivo) como herramienta:
+        // ContentView no sabe CÓMO se detecta el ganador, solo llama a quien sí sabe.
+        if let ganador = GameLogic.verificarGanador(en: tablero) {
+
+            // Asignamos el nuevo estado al @State: SwiftUI redibuja el badge.
+            // Usamos el valor asociado: .ganador(jugador: ganador) empaqueta
+            // el símbolo del ganador junto con el caso del enum.
+            estadoJuego = .ganador(jugador: ganador)
+
+        } else if GameLogic.verificarEmpate(en: tablero) {
+
+            // Si no hay ganador PERO el tablero está lleno → empate.
+            // El orden importa: siempre verificar ganador ANTES de empate.
+            estadoJuego = .empate
+
+        } else {
+
+            // Si no hay ganador ni empate, el juego continúa: cambiamos turno.
+            turnoActual = turnoActual == "X" ? "O" : "X"
+        }
     }
 }
 
