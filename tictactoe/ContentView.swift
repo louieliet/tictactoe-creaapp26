@@ -19,11 +19,14 @@
 // FEATURE: sofia-mejor-de-3
 // ─────────────────────────────────────────────────────────────────────────────
 // Agregamos el concepto de SERIE al mejor de 3 rondas.
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: renata-anuncio-ganador
+// ─────────────────────────────────────────────────────────────────────────────
+// Mostramos un alert al terminar cada ronda y al terminar la serie.
 // Conceptos nuevos:
-//   · String? (Optional): un valor que puede existir o ser nil
-//   · if let: desenvolver un optional de forma segura
-//   · Dos niveles de estado: ronda (tablero) y serie (marcador)
-//   · Funciones pequeñas con responsabilidad única (reiniciarRonda / reiniciarSerie)
+//   · .alert en SwiftUI: diálogo nativo del sistema con título, mensaje y botones
+//   · @Binding implícito con $: conecta el Bool al sistema de alertas
+//   · Botones contextuales en alert: distintos según si la serie terminó o no
 // ─────────────────────────────────────────────────────────────────────────────
 
 // La lógica del juego ahora vive en GameLogic.swift.
@@ -94,6 +97,22 @@ struct ContentView: View {
     //   · Cuando alguien gana 2 rondas, guardamos "X" u "O"
     // String? significa: "puede ser un String, o puede ser nil (nada)".
     @State private var ganadorSerie: String? = nil
+
+    // ─── FEATURE: ESTADO DEL ANUNCIO ─────────────────────────────────────────
+    //
+    // "mostrarAnuncio" controla si el alert está visible.
+    // SwiftUI observa este @State: en cuanto cambia a true, presenta el alert.
+    // Cuando el usuario toca un botón del alert, SwiftUI lo vuelve a false solo.
+    @State private var mostrarAnuncio: Bool = false
+
+    // Contenido del alert: lo llenamos justo antes de mostrarlo.
+    // Separar título y mensaje permite mensajes ricos sin lógica en el body.
+    @State private var tituloAnuncio: String = ""
+    @State private var mensajeAnuncio: String = ""
+
+    // Flag que distingue si el alert actual corresponde al cierre de la serie.
+    // Lo usamos para mostrar el botón correcto: "Nueva Ronda" vs "Nueva Serie".
+    @State private var anuncioDeSerie: Bool = false
 
     // ─── PROPIEDADES COMPUTADAS ───────────────────────────────────────────────
 
@@ -266,6 +285,26 @@ struct ContentView: View {
             }
         }
         .padding()
+        // FEATURE: alert de resultado.
+        // ".alert" recibe: título, binding de visibilidad, botones (actions) y mensaje.
+        // "$mostrarAnuncio" es un Binding<Bool>: el "$" indica que pasamos la referencia
+        // mutable, no el valor. SwiftUI la pone en false al cerrar el alert.
+        .alert(tituloAnuncio, isPresented: $mostrarAnuncio) {
+            if anuncioDeSerie {
+                // La serie terminó: solo mostramos opción de empezar de cero.
+                Button("Nueva Serie") {
+                    reiniciarSerie()
+                }
+            } else {
+                // La ronda terminó pero la serie sigue: ofrecemos continuar.
+                Button("Siguiente Ronda") {
+                    reiniciarRonda()
+                }
+            }
+        } message: {
+            // El bloque "message" define el cuerpo del alert.
+            Text(mensajeAnuncio)
+        }
     }
 
     // ─── LÓGICA DEL JUEGO ─────────────────────────────────────────────────────
@@ -320,12 +359,32 @@ struct ContentView: View {
         }
 
         // REGLA DEL MEJOR DE 3: gana la serie quien llegue primero a 2 victorias.
-        // Usamos "||" (OR): se cumple si X llegó a 2 O si O llegó a 2.
         if victoriasX == 2 || victoriasO == 2 {
-            // Asignamos el ganador de serie. Esto cambia ganadorSerie de nil → "X"/"O".
-            // SwiftUI detecta el cambio y redibuja mensajeEstado y los botones.
             ganadorSerie = ganador
+            // NOVEDAD: preparamos el anuncio de cierre de SERIE.
+            prepararAnuncio(
+                titulo: "¡Serie terminada!",
+                mensaje: "\(ganador) ganó el mejor de 3. ¡Felicidades!",
+                esDeSerie: true
+            )
+        } else {
+            // NOVEDAD: preparamos el anuncio de fin de RONDA.
+            prepararAnuncio(
+                titulo: "Ronda terminada",
+                mensaje: "Ganó \(ganador). Marcador: X \(victoriasX) — O \(victoriasO)",
+                esDeSerie: false
+            )
         }
+    }
+
+    // Configura el contenido del alert y lo presenta.
+    // Separar esta función evita repetir las 4 asignaciones en cada lugar.
+    private func prepararAnuncio(titulo: String, mensaje: String, esDeSerie: Bool) {
+        tituloAnuncio = titulo
+        mensajeAnuncio = mensaje
+        anuncioDeSerie = esDeSerie
+        // Asignar true a este @State hace que SwiftUI muestre el alert inmediatamente.
+        mostrarAnuncio = true
     }
 
     // Reinicia solo el tablero y estado de ronda.
