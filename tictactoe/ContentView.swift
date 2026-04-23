@@ -23,10 +23,14 @@
 // FEATURE: renata-anuncio-ganador
 // ─────────────────────────────────────────────────────────────────────────────
 // Mostramos un alert al terminar cada ronda y al terminar la serie.
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: emilio-panel-estadisticas
+// ─────────────────────────────────────────────────────────────────────────────
+// Acumulador global de métricas y panel togglable bajo el tablero.
 // Conceptos nuevos:
-//   · .alert en SwiftUI: diálogo nativo del sistema con título, mensaje y botones
-//   · @Binding implícito con $: conecta el Bool al sistema de alertas
-//   · Botones contextuales en alert: distintos según si la serie terminó o no
+//   · Variables de sesión vs variables de serie: diferencia de alcance
+//   · computed property: "private var panelView: some View" como subvista
+//   · .toggle(): invierte un Bool con una sola llamada
 // ─────────────────────────────────────────────────────────────────────────────
 
 // La lógica del juego ahora vive en GameLogic.swift.
@@ -113,6 +117,21 @@ struct ContentView: View {
     // Flag que distingue si el alert actual corresponde al cierre de la serie.
     // Lo usamos para mostrar el botón correcto: "Nueva Ronda" vs "Nueva Serie".
     @State private var anuncioDeSerie: Bool = false
+
+    // ─── FEATURE: ESTADÍSTICAS GLOBALES ───────────────────────────────────────
+    //
+    // Diferencia clave de alcance:
+    //   · victoriasX / victoriasO → son de la SERIE actual (se resetean)
+    //   · totalVictoriasX / totalVictoriasO → son de la SESIÓN (nunca se resetean)
+    // El mismo concepto que en videojuegos: "victorias en esta partida" vs "total histórico".
+    @State private var totalPartidas: Int = 0
+    @State private var totalVictoriasX: Int = 0
+    @State private var totalVictoriasO: Int = 0
+    @State private var totalEmpates: Int = 0
+
+    // Controla si el panel está desplegado o colapsado.
+    // .toggle() es el método de Bool que lo invierte: true → false, false → true.
+    @State private var mostrarEstadisticas: Bool = false
 
     // ─── PROPIEDADES COMPUTADAS ───────────────────────────────────────────────
 
@@ -250,6 +269,23 @@ struct ContentView: View {
             }
             .padding(.horizontal)
 
+            // MARK: Panel de estadísticas (togglable)
+            // Un Button que no hace ninguna acción de juego: solo cambia UI.
+            // .toggle() invierte mostrarEstadisticas: si era false pasa a true y viceversa.
+            Button(mostrarEstadisticas ? "Ocultar estadísticas" : "Ver estadísticas 📊") {
+                mostrarEstadisticas.toggle()
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            // "if mostrarEstadisticas" muestra el panel solo cuando el toggle está activado.
+            // Es el patrón más simple de visibilidad condicional en SwiftUI.
+            if mostrarEstadisticas {
+                // Llamamos a la propiedad computada que devuelve la subvista.
+                // Separarla del body mantiene el body legible.
+                panelEstadisticasView
+            }
+
             // MARK: Botones contextuales de serie
             // NOVEDAD: mostramos botones distintos según el estado de la serie.
             //
@@ -336,8 +372,10 @@ struct ContentView: View {
 
         } else if GameLogic.verificarEmpate(en: tablero) {
 
-            // Empate de ronda: no suma victorias a nadie.
+            // Empate de ronda: suma al contador global de empates.
             estadoJuego = .empate
+            totalEmpates += 1
+            totalPartidas += 1
 
         } else {
 
@@ -359,22 +397,53 @@ struct ContentView: View {
         }
 
         // REGLA DEL MEJOR DE 3: gana la serie quien llegue primero a 2 victorias.
+        // NOVEDAD: acumulamos en el contador global de victorias.
+        if ganador == "X" { totalVictoriasX += 1 } else { totalVictoriasO += 1 }
+        totalPartidas += 1
+
         if victoriasX == 2 || victoriasO == 2 {
             ganadorSerie = ganador
-            // NOVEDAD: preparamos el anuncio de cierre de SERIE.
             prepararAnuncio(
                 titulo: "¡Serie terminada!",
                 mensaje: "\(ganador) ganó el mejor de 3. ¡Felicidades!",
                 esDeSerie: true
             )
         } else {
-            // NOVEDAD: preparamos el anuncio de fin de RONDA.
             prepararAnuncio(
                 titulo: "Ronda terminada",
                 mensaje: "Ganó \(ganador). Marcador: X \(victoriasX) — O \(victoriasO)",
                 esDeSerie: false
             )
         }
+    }
+
+    // ─── SUBVISTA: PANEL DE ESTADÍSTICAS ─────────────────────────────────────────
+    //
+    // "private var panelEstadisticasView: some View" es una propiedad computada
+    // que devuelve una vista. Es la forma idiomática en SwiftUI de extraer
+    // bloques grandes del body sin crear un struct nuevo.
+    // VENTAJA: comparte acceso al estado del struct padre sin pasarlo como parámetro.
+    private var panelEstadisticasView: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Estadísticas de sesión")
+                .font(.headline)
+                .padding(.bottom, 2)
+
+            // Usamos interpolación \() para insertar los valores @State directamente.
+            Text("Partidas totales: \(totalPartidas)")
+            Text("Victorias X: \(totalVictoriasX)")
+                .foregroundStyle(.blue)
+            Text("Victorias O: \(totalVictoriasO)")
+                .foregroundStyle(.red)
+            Text("Empates: \(totalEmpates)")
+                .foregroundStyle(.orange)
+        }
+        .font(.subheadline)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.gray.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal)
     }
 
     // Configura el contenido del alert y lo presenta.
