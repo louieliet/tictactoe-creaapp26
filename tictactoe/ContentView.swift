@@ -16,6 +16,15 @@
 //   · Consumir lógica externa desde la vista (GameLogic.verificarGanador)
 //   · Bloquear la UI cuando el juego termina
 // ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: sofia-mejor-de-3
+// ─────────────────────────────────────────────────────────────────────────────
+// Agregamos el concepto de SERIE al mejor de 3 rondas.
+// Conceptos nuevos:
+//   · String? (Optional): un valor que puede existir o ser nil
+//   · if let: desenvolver un optional de forma segura
+//   · Dos niveles de estado: ronda (tablero) y serie (marcador)
+//   · Funciones pequeñas con responsabilidad única (reiniciarRonda / reiniciarSerie)
+// ─────────────────────────────────────────────────────────────────────────────
 
 // La lógica del juego ahora vive en GameLogic.swift.
 // ContentView solo se ocupa de la interfaz: consume GameLogic como herramienta.
@@ -66,6 +75,26 @@ struct ContentView: View {
     // no necesitamos escribir EstadoJuego.jugando porque Swift infiere el tipo.
     @State private var estadoJuego: EstadoJuego = .jugando
 
+    // ─── FEATURE: ESTADO DE SERIE ────────────────────────────────────────────
+    //
+    // Separamos dos niveles de estado:
+    //   · Estado de RONDA: tablero, turnoActual, estadoJuego  (ya existían)
+    //   · Estado de SERIE: victorias por jugador, ganador de serie (nuevo)
+    //
+    // Esta separación es la misma idea de responsabilidad única que aprendimos
+    // con GameLogic.swift: cada variable describe exactamente un concepto.
+
+    // Contadores de victorias dentro de la serie actual.
+    // Int porque son números enteros positivos que incrementamos al ganar.
+    @State private var victoriasX: Int = 0
+    @State private var victoriasO: Int = 0
+
+    // Ganador de la serie completa. Usamos String? (Optional) porque:
+    //   · Mientras la serie está en curso, NO hay ganador → nil
+    //   · Cuando alguien gana 2 rondas, guardamos "X" u "O"
+    // String? significa: "puede ser un String, o puede ser nil (nada)".
+    @State private var ganadorSerie: String? = nil
+
     // ─── PROPIEDADES COMPUTADAS ───────────────────────────────────────────────
 
     // "mensajeEstado" calcula el texto del badge según el estado actual del juego.
@@ -76,13 +105,20 @@ struct ContentView: View {
     // "case .ganador(let jugador)" extrae el valor asociado del enum:
     // "jugador" recibe el String que guardamos cuando llamamos .ganador(jugador: "X").
     private var mensajeEstado: String {
+        // NOVEDAD: si ya hay ganador de serie, ese mensaje tiene prioridad.
+        // "if let ganador = ganadorSerie" desenvuelve el Optional:
+        // si ganadorSerie NO es nil, entra al bloque con el valor en "ganador".
+        if let ganador = ganadorSerie {
+            return "🏆 \(ganador) ganó la serie"
+        }
+
         switch estadoJuego {
         case .jugando:
             return "Turno de: \(turnoActual)"
         case .ganador(let jugador):
-            return "¡\(jugador) ganó!"
+            return "¡\(jugador) ganó la ronda!"
         case .empate:
-            return "¡Empate!"
+            return "¡Empate en esta ronda!"
         }
     }
 
@@ -90,6 +126,11 @@ struct ContentView: View {
     // Mismo patrón switch: un color por cada estado posible.
     // .orange para empate da señal visual neutral (ni azul de X ni rojo de O).
     private var colorEstado: Color {
+        // Si hay ganador de serie, el color refleja al campeón.
+        if let ganador = ganadorSerie {
+            return ganador == "X" ? .blue : .red
+        }
+
         switch estadoJuego {
         case .jugando:
             return turnoActual == "X" ? .blue : .red
@@ -111,6 +152,38 @@ struct ContentView: View {
             Text(tituloJuego)
                 .font(.largeTitle)
                 .fontWeight(.bold)
+
+            // MARK: Marcador de serie
+            // NOVEDAD: mostramos victorias acumuladas de la serie.
+            // HStack = Horizontal Stack: coloca vistas en fila.
+            // Los colores .blue y .red identifican visualmente a cada jugador.
+            HStack(spacing: 24) {
+                VStack {
+                    Text("\(victoriasX)")
+                        .font(.system(size: 36, weight: .bold))
+                        .foregroundStyle(.blue)
+                    Text("X")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text("Mejor de 3")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                VStack {
+                    Text("\(victoriasO)")
+                        .font(.system(size: 36, weight: .bold))
+                        .foregroundStyle(.red)
+                    Text("O")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 10)
+            .background(.gray.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
 
             // MARK: Badge de estado (turno o resultado final)
             // NOVEDAD SESIÓN 3: ya no mostramos solo el turno.
@@ -157,6 +230,40 @@ struct ContentView: View {
                 }
             }
             .padding(.horizontal)
+
+            // MARK: Botones contextuales de serie
+            // NOVEDAD: mostramos botones distintos según el estado de la serie.
+            //
+            // Si la serie terminó → "Nueva Serie" (reinicia TODO)
+            // Si la ronda terminó sin cerrar serie → "Nueva Ronda" (solo limpia tablero)
+            // Si se está jugando → no mostramos ningún botón
+            //
+            // Usamos .opacity() en lugar de if/else para animar suavemente.
+            // opacity 0 = invisible pero sigue en layout; if/else destruye la vista.
+            if ganadorSerie != nil {
+                // La serie tiene ganador: única acción disponible es reiniciar todo.
+                Button("Nueva Serie") {
+                    reiniciarSerie()
+                }
+                .font(.headline)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 12)
+                .background(colorEstado)
+                .clipShape(Capsule())
+
+            } else if !estadoJuego.estaJugando {
+                // La ronda terminó pero la serie sigue: permitimos avanzar.
+                Button("Nueva Ronda") {
+                    reiniciarRonda()
+                }
+                .font(.headline)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 12)
+                .background(colorEstado)
+                .clipShape(Capsule())
+            }
         }
         .padding()
     }
@@ -165,45 +272,79 @@ struct ContentView: View {
 
     private func jugarCelda(en indice: Int) {
 
-        // NOVEDAD SESIÓN 3: primer guard bloquea jugadas cuando la partida terminó.
-        // estadoJuego.estaJugando es la propiedad computada del enum.
-        // Si el juego ya terminó (.ganador o .empate), salimos inmediatamente.
-        // Esto evita que los jugadores sigan tocando celdas después del resultado.
+        // NOVEDAD: si la serie ya tiene ganador, bloqueamos TODAS las jugadas.
+        // Es el primer guard porque tiene prioridad sobre el estado de ronda.
+        guard ganadorSerie == nil else { return }
+
+        // Igual que sesión 3: bloquear si la ronda terminó.
         guard estadoJuego.estaJugando else { return }
 
-        // Segundo guard: la celda debe estar vacía (igual que sesión 2).
+        // La celda debe estar vacía.
         guard tablero[indice].isEmpty else { return }
 
         // Registramos la jugada en el tablero.
         tablero[indice] = turnoActual
 
-        // NOVEDAD SESIÓN 3: verificamos si alguien ganó tras esta jugada.
-        //
-        // "if let ganador = GameLogic.verificarGanador(en: tablero)" es OPTIONAL BINDING.
-        // verificarGanador devuelve String? (un optional: puede ser "X", "O", o nil).
-        // "if let" desenvuelve el optional: si hay valor, lo asigna a "ganador" y entra.
-        // Si devuelve nil (no hay ganador), omite ese bloque y evalúa el siguiente.
-        //
-        // Usamos GameLogic (el struct del otro archivo) como herramienta:
-        // ContentView no sabe CÓMO se detecta el ganador, solo llama a quien sí sabe.
         if let ganador = GameLogic.verificarGanador(en: tablero) {
 
-            // Asignamos el nuevo estado al @State: SwiftUI redibuja el badge.
-            // Usamos el valor asociado: .ganador(jugador: ganador) empaqueta
-            // el símbolo del ganador junto con el caso del enum.
+            // La ronda tiene ganador: actualizamos estado Y procesamos serie.
             estadoJuego = .ganador(jugador: ganador)
+
+            // NOVEDAD: procesamos el resultado en el marcador de serie.
+            // Esta función contiene TODO lo relacionado con la serie
+            // para mantener jugarCelda limpia y fácil de leer.
+            procesarResultadoRonda(ganador: ganador)
 
         } else if GameLogic.verificarEmpate(en: tablero) {
 
-            // Si no hay ganador PERO el tablero está lleno → empate.
-            // El orden importa: siempre verificar ganador ANTES de empate.
+            // Empate de ronda: no suma victorias a nadie.
             estadoJuego = .empate
 
         } else {
 
-            // Si no hay ganador ni empate, el juego continúa: cambiamos turno.
+            // La ronda sigue: cambiamos turno.
             turnoActual = turnoActual == "X" ? "O" : "X"
         }
+    }
+
+    // Procesa el resultado de una ronda ganada y decide si la serie terminó.
+    // PRINCIPIO: función pequeña con responsabilidad única.
+    // jugarCelda detecta el evento; procesarResultadoRonda gestiona la serie.
+    private func procesarResultadoRonda(ganador: String) {
+
+        // Incrementamos la victoria del jugador correspondiente.
+        if ganador == "X" {
+            victoriasX += 1
+        } else {
+            victoriasO += 1
+        }
+
+        // REGLA DEL MEJOR DE 3: gana la serie quien llegue primero a 2 victorias.
+        // Usamos "||" (OR): se cumple si X llegó a 2 O si O llegó a 2.
+        if victoriasX == 2 || victoriasO == 2 {
+            // Asignamos el ganador de serie. Esto cambia ganadorSerie de nil → "X"/"O".
+            // SwiftUI detecta el cambio y redibuja mensajeEstado y los botones.
+            ganadorSerie = ganador
+        }
+    }
+
+    // Reinicia solo el tablero y estado de ronda.
+    // NO toca victorias ni ganadorSerie: la serie continúa.
+    private func reiniciarRonda() {
+        tablero = Array(repeating: "", count: 9)
+        turnoActual = "X"
+        estadoJuego = .jugando
+    }
+
+    // Reinicia la serie completa: marcador, ganador de serie y ronda.
+    // Se llama solo cuando el usuario quiere comenzar una serie nueva desde cero.
+    private func reiniciarSerie() {
+        victoriasX = 0
+        victoriasO = 0
+        // Asignamos nil para indicar que aún no hay ganador de la nueva serie.
+        // nil en un Optional significa "ausencia de valor": la serie está en curso.
+        ganadorSerie = nil
+        reiniciarRonda()
     }
 }
 
