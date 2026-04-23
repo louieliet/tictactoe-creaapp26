@@ -39,6 +39,15 @@
 // FEATURE: renata-menu-principal
 // ─────────────────────────────────────────────────────────────────────────────
 // Pantalla de menú con botón de inicio; navegación por estado simple.
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: abraham-letrero-con-imagen
+// ─────────────────────────────────────────────────────────────────────────────
+// Banner superior con SF Symbol dinámico según contexto del juego.
+// Conceptos nuevos:
+//   · Propiedad computada para lógica contextual: iconoLetrero / subtituloLetrero
+//   · Image(systemName:): iconografía nativa sin assets externos
+//   · HStack + VStack anidados: composición de layouts complejos
+// ─────────────────────────────────────────────────────────────────────────────
 // Conceptos nuevos:
 //   · enum PantallaActual: navegar por estado en lugar de NavigationStack
 //   · @ViewBuilder: permite if/else directamente en el body de SwiftUI
@@ -207,6 +216,23 @@ struct ContentView: View {
     // Mismo patrón para O.
     private var colorO: Color { paletaO[indiceColorO] }
 
+    // ─── FEATURE: LETRERO CON IMAGEN ────────────────────────────────────────
+    //
+    // Propiedad computada: el ícono cambia según el estado del juego.
+    // Esto es más mantenible que poner ternarios directamente en la vista.
+    private var iconoLetrero: String {
+        if ganadorSerie != nil    { return "trophy.fill" }       // serie ganada
+        if !estadoJuego.estaJugando { return "flag.checkered" } // ronda terminada
+        return "gamecontroller.fill"                            // jugando
+    }
+
+    // Subtexto del letrero: comunica el contexto rápidamente.
+    private var subtituloLetrero: String {
+        if let ganador = ganadorSerie { return "🏆 \(ganador) ganó la serie" }
+        if !estadoJuego.estaJugando   { return "Toca \"Nueva Ronda\" para continuar" }
+        return "Turno \(turnoActual) — mejor de 3"
+    }
+
     // "mensajeEstado" calcula el texto del badge según el estado actual del juego.
     // Usa "switch": la estructura de control que cubre TODOS los casos de un enum.
     // Swift obliga que el switch sea EXHAUSTIVO: si no cubres un caso, error de compilación.
@@ -302,11 +328,28 @@ struct ContentView: View {
 
         VStack(spacing: 24) {
 
-            // MARK: Título
-            // Igual que en sesión 1: constante, no necesita @State.
-            Text(tituloJuego)
-                .font(.largeTitle)
-                .fontWeight(.bold)
+            // MARK: Letrero con imagen (FEATURE de Abraham)
+            // HStack anida una imagen y un VStack de texto.
+            // La imagen es un SF Symbol: vectorial, escala libre, sin assets externos.
+            HStack(spacing: 14) {
+                Image(systemName: iconoLetrero)
+                    .font(.system(size: 32))
+                    .foregroundStyle(colorEstado)
+                    // .animation anima la transición cuando el ícono cambia.
+                    .animation(.spring(response: 0.4, dampingFraction: 0.6), value: iconoLetrero)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tituloJuego)
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    Text(subtituloLetrero)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()   // empuja el contenido a la izquierda
+            }
+            .padding(.horizontal, 4)
 
             // MARK: Marcador de serie
             // NOVEDAD: mostramos victorias acumuladas de la serie.
