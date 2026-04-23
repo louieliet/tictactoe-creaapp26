@@ -35,6 +35,15 @@
 // FEATURE: omar-color-x-o-por-victoria
 // ─────────────────────────────────────────────────────────────────────────────
 // El color de X y O rota cada vez que ese jugador gana una ronda.
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: renata-menu-principal
+// ─────────────────────────────────────────────────────────────────────────────
+// Pantalla de menú con botón de inicio; navegación por estado simple.
+// Conceptos nuevos:
+//   · enum PantallaActual: navegar por estado en lugar de NavigationStack
+//   · @ViewBuilder: permite if/else directamente en el body de SwiftUI
+//   · Extraer subvistas como computed properties: cuerpo limpio y legible
+// ─────────────────────────────────────────────────────────────────────────────
 // Conceptos nuevos:
 //   · Array de Color: paleta como arreglo indexable
 //   · % (módulo): ciclar un índice de forma circular dentro de un rango
@@ -46,9 +55,20 @@
 //   · private let (no @State): valor que no cambia, no necesita observarse
 // ─────────────────────────────────────────────────────────────────────────────
 
-// La lógica del juego ahora vive en GameLogic.swift.
-// ContentView solo se ocupa de la interfaz: consume GameLogic como herramienta.
 import SwiftUI
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: NAVEGACIÓN
+// ─────────────────────────────────────────────────────────────────────────────
+
+// "PantallaActual" define las pantallas posibles de la app.
+// Al usar enum evitamos estados inválidos: la app SOLO puede estar en una pantalla.
+// Es más seguro y legible que usar un String o Int para identificar pantallas.
+enum PantallaActual {
+    case menu    // pantalla de inicio
+    case juego   // tablero de juego
+}
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -160,6 +180,12 @@ struct ContentView: View {
     // SwiftUI lo escucha con .onReceive más abajo en el body.
     private let reloj = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
+    // ─── FEATURE: NAVEGACIÓN ──────────────────────────────────────────────────
+    //
+    // Arrancamos en menú: el juego no inicia solo, el usuario lo elige.
+    // @State porque cambia cuando el usuario toca "Iniciar Serie" o "Volver".
+    @State private var pantallaActual: PantallaActual = .menu
+
     // ─── FEATURE: PALETAS DE COLOR ──────────────────────────────────────────
     //
     // "private let" porque las paletas son configuración fija: no cambian en runtime.
@@ -227,7 +253,52 @@ struct ContentView: View {
 
     // ─── INTERFAZ ─────────────────────────────────────────────────────────────
 
-    var body: some View {
+    // SUBVISTA: menú principal.
+    // "private var vistaMenu: some View" es una propiedad computada que devuelve una vista.
+    // VENTAJA sobre ponerlo en el body: el body queda limpio y cada subvista se
+    // puede leer, entender y modificar de forma independiente.
+    private var vistaMenu: some View {
+        VStack(spacing: 28) {
+
+            Spacer()
+
+            Image(systemName: "gamecontroller.fill")
+                .font(.system(size: 64))
+                .foregroundStyle(colorX)
+
+            Text(tituloJuego)
+                .font(.largeTitle)
+                .fontWeight(.bold)
+
+            Text("Bienvenido al taller de Swift")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            // Botón principal: reinicia serie y navega al juego.
+            // "pantallaActual = .juego" cambia el @State → SwiftUI redibuja el body.
+            Button {
+                reiniciarSerie()
+                pantallaActual = .juego
+            } label: {
+                Label("Iniciar Serie", systemImage: "play.fill")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(colorX)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .padding(.horizontal, 32)
+
+            Spacer()
+        }
+        .padding()
+    }
+
+    // SUBVISTA: pantalla de juego.
+    // Agrupa tablero, marcador, estadísticas y controles.
+    private var vistaJuego: some View {
 
         VStack(spacing: 24) {
 
@@ -367,7 +438,6 @@ struct ContentView: View {
             // Usamos .opacity() en lugar de if/else para animar suavemente.
             // opacity 0 = invisible pero sigue en layout; if/else destruye la vista.
             if ganadorSerie != nil {
-                // La serie tiene ganador: única acción disponible es reiniciar todo.
                 Button("Nueva Serie") {
                     reiniciarSerie()
                 }
@@ -379,7 +449,6 @@ struct ContentView: View {
                 .clipShape(Capsule())
 
             } else if !estadoJuego.estaJugando {
-                // La ronda terminó pero la serie sigue: permitimos avanzar.
                 Button("Nueva Ronda") {
                     reiniciarRonda()
                 }
@@ -390,8 +459,30 @@ struct ContentView: View {
                 .background(colorEstado)
                 .clipShape(Capsule())
             }
+
+            // Botón de retorno: permite volver al menú sin terminar la serie.
+            // "pantallaActual = .menu" es la misma lógica de navegación que en vistaMenu.
+            Button("Volver al menú") {
+                pantallaActual = .menu
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .padding()
+    }  // cierra vistaJuego
+
+    var body: some View {
+
+        // "@ViewBuilder" en el body de SwiftUI permite usar if/else directamente.
+        // Group es un contenedor neutro: no cambia el layout pero permite
+        // aplicar modificadores (.onReceive, .alert) a TODAS las pantallas a la vez.
+        Group {
+            if pantallaActual == .menu {
+                vistaMenu
+            } else {
+                vistaJuego
+            }
+        }
         // FEATURE: timer — .onReceive escucha cada evento del Timer.
         // "_" ignora el valor del evento (la fecha); solo nos importa que ocurrió.
         .onReceive(reloj) { _ in
@@ -551,6 +642,9 @@ struct ContentView: View {
     // Maneja cada tick del reloj: decrementa y castiga al jugador si llega a 0.
     // Es privada porque es un detalle de implementación: solo ContentView la usa.
     private func manejarTickDelTimer() {
+        // El timer solo corre en la pantalla de juego, nunca en el menú.
+        guard pantallaActual == .juego else { return }
+
         // Si la ronda no está activa, el timer no corre.
         guard estadoJuego.estaJugando else { return }
 
