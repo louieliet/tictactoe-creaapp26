@@ -31,6 +31,15 @@
 // FEATURE: diego-timer-juego
 // ─────────────────────────────────────────────────────────────────────────────
 // Cuenta regresiva por turno: 10 segundos para jugar o pierdes el turno.
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: omar-color-x-o-por-victoria
+// ─────────────────────────────────────────────────────────────────────────────
+// El color de X y O rota cada vez que ese jugador gana una ronda.
+// Conceptos nuevos:
+//   · Array de Color: paleta como arreglo indexable
+//   · % (módulo): ciclar un índice de forma circular dentro de un rango
+//   · Inyección de dependencia visual: pasar colores como parámetros a subvistas
+// ─────────────────────────────────────────────────────────────────────────────
 // Conceptos nuevos:
 //   · Timer.publish: genera eventos periódicos en el hilo principal
 //   · .onReceive: escucha eventos externos (timer, notificaciones) en SwiftUI
@@ -151,7 +160,26 @@ struct ContentView: View {
     // SwiftUI lo escucha con .onReceive más abajo en el body.
     private let reloj = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
+    // ─── FEATURE: PALETAS DE COLOR ──────────────────────────────────────────
+    //
+    // "private let" porque las paletas son configuración fija: no cambian en runtime.
+    // Usamos colores de alto contraste para garantizar legibilidad siempre.
+    private let paletaX: [Color] = [.blue, .cyan, .mint, .indigo]
+    private let paletaO: [Color] = [.red, .pink, .orange, .purple]
+
+    // Índice actual de cada jugador en su paleta. Avanza al ganar una ronda.
+    // @State porque cuando cambia, SwiftUI debe redibujar celdas y badges.
+    @State private var indiceColorX: Int = 0
+    @State private var indiceColorO: Int = 0
+
     // ─── PROPIEDADES COMPUTADAS ───────────────────────────────────────────────
+
+    // Devuelve el color actual de X según su posición en la paleta.
+    // Propiedad computada porque se recalcula sola cuando indiceColorX cambia.
+    private var colorX: Color { paletaX[indiceColorX] }
+
+    // Mismo patrón para O.
+    private var colorO: Color { paletaO[indiceColorO] }
 
     // "mensajeEstado" calcula el texto del badge según el estado actual del juego.
     // Usa "switch": la estructura de control que cubre TODOS los casos de un enum.
@@ -182,16 +210,16 @@ struct ContentView: View {
     // Mismo patrón switch: un color por cada estado posible.
     // .orange para empate da señal visual neutral (ni azul de X ni rojo de O).
     private var colorEstado: Color {
-        // Si hay ganador de serie, el color refleja al campeón.
+        // NOVEDAD: ahora usa colorX/colorO (dinámicos) en vez de .blue/.red (fijos).
         if let ganador = ganadorSerie {
-            return ganador == "X" ? .blue : .red
+            return ganador == "X" ? colorX : colorO
         }
 
         switch estadoJuego {
         case .jugando:
-            return turnoActual == "X" ? .blue : .red
+            return turnoActual == "X" ? colorX : colorO
         case .ganador(let jugador):
-            return jugador == "X" ? .blue : .red
+            return jugador == "X" ? colorX : colorO
         case .empate:
             return .orange
         }
@@ -217,7 +245,7 @@ struct ContentView: View {
                 VStack {
                     Text("\(victoriasX)")
                         .font(.system(size: 36, weight: .bold))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(colorX)   // NOVEDAD: color dinámico
                     Text("X")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -230,7 +258,7 @@ struct ContentView: View {
                 VStack {
                     Text("\(victoriasO)")
                         .font(.system(size: 36, weight: .bold))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(colorO)   // NOVEDAD: color dinámico
                     Text("O")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -297,9 +325,15 @@ struct ContentView: View {
                     // cuando el usuario toque esa celda específica.
                     // Así CeldaView no necesita saber nada del juego:
                     // solo avisa "me tocaron" y ContentView decide qué hacer.
+                    // NOVEDAD: pasamos colorX y colorO a cada celda.
+                    // Así CeldaView siempre refleja el color actual del jugador.
+                    // Este patrón se llama "inyección de dependencia": el padre
+                    // provee los colores, el hijo sólo los usa sin conocer su origen.
                     CeldaView(
                         contenido: tablero[indice],
                         indice: indice,
+                        colorX: colorX,
+                        colorO: colorO,
                         alTocar: { jugarCelda(en: indice) }
                     )
                 }
@@ -440,10 +474,18 @@ struct ContentView: View {
             victoriasO += 1
         }
 
-        // REGLA DEL MEJOR DE 3: gana la serie quien llegue primero a 2 victorias.
-        // NOVEDAD: acumulamos en el contador global de victorias.
+        // REGLA DEL MEJOR DE 3 + acumulador global.
         if ganador == "X" { totalVictoriasX += 1 } else { totalVictoriasO += 1 }
         totalPartidas += 1
+
+        // NOVEDAD: rotamos el color del jugador que acaba de ganar.
+        // "% paletaX.count" hace que el índice vuelva a 0 al llegar al final.
+        // Ejemplo con paleta de 4: 0→1→2→3→0→1... ciclo infinito.
+        if ganador == "X" {
+            indiceColorX = (indiceColorX + 1) % paletaX.count
+        } else {
+            indiceColorO = (indiceColorO + 1) % paletaO.count
+        }
 
         if victoriasX == 2 || victoriasO == 2 {
             ganadorSerie = ganador
@@ -463,22 +505,17 @@ struct ContentView: View {
 
     // ─── SUBVISTA: PANEL DE ESTADÍSTICAS ─────────────────────────────────────────
     //
-    // "private var panelEstadisticasView: some View" es una propiedad computada
-    // que devuelve una vista. Es la forma idiomática en SwiftUI de extraer
-    // bloques grandes del body sin crear un struct nuevo.
-    // VENTAJA: comparte acceso al estado del struct padre sin pasarlo como parámetro.
     private var panelEstadisticasView: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Estadísticas de sesión")
                 .font(.headline)
                 .padding(.bottom, 2)
 
-            // Usamos interpolación \() para insertar los valores @State directamente.
             Text("Partidas totales: \(totalPartidas)")
             Text("Victorias X: \(totalVictoriasX)")
-                .foregroundStyle(.blue)
+                .foregroundStyle(colorX)   // NOVEDAD: color dinámico del jugador X
             Text("Victorias O: \(totalVictoriasO)")
-                .foregroundStyle(.red)
+                .foregroundStyle(colorO)   // NOVEDAD: color dinámico del jugador O
             Text("Empates: \(totalEmpates)")
                 .foregroundStyle(.orange)
         }
@@ -557,56 +594,40 @@ struct CeldaView: View {
     let contenido: String  // Qué tiene la celda: "", "X" o "O"
     let indice: Int        // Posición en el tablero (0-8)
 
-    // "alTocar: () -> Void" es un CLOSURE como propiedad.
-    // "()" → la función no recibe ningún parámetro.
-    // "Void" → la función no devuelve ningún valor (solo ejecuta algo).
-    // Leer como: "alTocar es una función que no recibe nada y no devuelve nada".
-    // Cuando ContentView crea esta celda, le pasa qué hacer al tocarla.
+    // NOVEDAD: colores inyectados desde ContentView.
+    // CeldaView no sabe qué color le toca al jugador; se lo dice el padre.
+    // Ventaja: si la paleta cambia, la celda lo refleja automáticamente.
+    let colorX: Color
+    let colorO: Color
+
     let alTocar: () -> Void
 
-    // ─── PROPIEDAD COMPUTADA ──────────────────────────────────────────────────
-    //
-    // El color de fondo de la celda cambia según su contenido:
-    // · Vacía → azul tenue (neutro, invita a jugar)
-    // · "X"   → azul (identidad visual del jugador X)
-    // · "O"   → rojo (identidad visual del jugador O)
-    //
-    // Separar este cálculo en una propiedad computada mantiene el body limpio.
-    // Si mañana queremos cambiar los colores, solo tocamos este lugar.
+    // Color de la celda: ahora usa colorX/colorO dinámicos en vez de .blue/.red fijos.
     private var colorCelda: Color {
-        if contenido == "X" { return .blue }
-        if contenido == "O" { return .red }
-        return .blue  // vacía: tono neutro azul
+        if contenido == "X" { return colorX }
+        if contenido == "O" { return colorO }
+        return .gray.opacity(0.5)  // vacía: tono neutro
     }
 
     var body: some View {
 
         ZStack {
 
-            // Fondo de la celda: usa colorCelda (propiedad computada).
-            // El color cambia automáticamente cuando "contenido" cambia,
-            // porque colorCelda se recalcula cada vez que se lee.
             RoundedRectangle(cornerRadius: 12)
-                .fill(colorCelda.opacity(0.12))
+                .fill(colorCelda.opacity(0.15))
                 .aspectRatio(1, contentMode: .fit)
 
             if contenido.isEmpty {
-                // Celda vacía: sutil indicador de posición.
-                // En producción podríamos quitarlo; aquí lo dejamos para el taller.
                 Text("\(indice)")
                     .font(.caption)
                     .foregroundStyle(.gray.opacity(0.35))
             } else {
-                // Celda jugada: muestra "X" o "O" en grande con su color.
+                // NOVEDAD: usa colorX u colorO según qué jugador ocupa la celda.
                 Text(contenido)
                     .font(.system(size: 48, weight: .bold))
-                    .foregroundStyle(contenido == "X" ? .blue : .red)
+                    .foregroundStyle(contenido == "X" ? colorX : colorO)
             }
         }
-        // CAMBIO DE SESIÓN 2: en lugar de print(), llamamos al closure alTocar().
-        // La sintaxis "alTocar()" ejecuta la función que nos pasaron como parámetro.
-        // ContentView decidió qué hace esa función: registrar la jugada.
-        // CeldaView no sabe nada del juego; solo dispara el evento. ← responsabilidad única
         .onTapGesture {
             alTocar()
         }
