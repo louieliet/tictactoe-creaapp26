@@ -27,10 +27,14 @@
 // FEATURE: emilio-panel-estadisticas
 // ─────────────────────────────────────────────────────────────────────────────
 // Acumulador global de métricas y panel togglable bajo el tablero.
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE: diego-timer-juego
+// ─────────────────────────────────────────────────────────────────────────────
+// Cuenta regresiva por turno: 10 segundos para jugar o pierdes el turno.
 // Conceptos nuevos:
-//   · Variables de sesión vs variables de serie: diferencia de alcance
-//   · computed property: "private var panelView: some View" como subvista
-//   · .toggle(): invierte un Bool con una sola llamada
+//   · Timer.publish: genera eventos periódicos en el hilo principal
+//   · .onReceive: escucha eventos externos (timer, notificaciones) en SwiftUI
+//   · private let (no @State): valor que no cambia, no necesita observarse
 // ─────────────────────────────────────────────────────────────────────────────
 
 // La lógica del juego ahora vive en GameLogic.swift.
@@ -132,6 +136,20 @@ struct ContentView: View {
     // Controla si el panel está desplegado o colapsado.
     // .toggle() es el método de Bool que lo invierte: true → false, false → true.
     @State private var mostrarEstadisticas: Bool = false
+
+    // ─── FEATURE: TIMER DE TURNO ───────────────────────────────────────────
+    //
+    // "private let" (sin @State): es una configuración fija, no cambia.
+    // No necesitamos observarla porque el timer no se "redibuja", solo define la duración.
+    private let duracionTurno: Int = 10
+
+    // Segundos restantes en el turno actual. @State porque se muestra en UI.
+    @State private var tiempoRestante: Int = 10
+
+    // Timer.publish genera un evento cada segundo en el hilo principal (.main).
+    // .autoconnect() lo activa automáticamente al aparecer la vista.
+    // SwiftUI lo escucha con .onReceive más abajo en el body.
+    private let reloj = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     // ─── PROPIEDADES COMPUTADAS ───────────────────────────────────────────────
 
@@ -242,6 +260,25 @@ struct ContentView: View {
                 // "value: mensajeEstado" le dice a SwiftUI QUÉ cambio debe animar.
                 .animation(.default, value: mensajeEstado)
 
+            // MARK: Timer de turno
+            // HStack: icon + texto de cuenta regresiva alineados horizontalmente.
+            // "tiempoRestante <= 3" pone el texto en rojo para alertar al jugador.
+            HStack {
+                Image(systemName: "timer")
+                    .foregroundStyle(tiempoRestante <= 3 ? .red : .secondary)
+                Text("\(tiempoRestante)s")
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundStyle(tiempoRestante <= 3 ? .red : .primary)
+                    // .animation anima el cambio de color cuando el tiempo es crítico.
+                    .animation(.default, value: tiempoRestante <= 3)
+                Spacer()
+                Text("Tiempo restante")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal)
+
             // MARK: Tablero 3x3
             // Las columnas no cambian: siguen siendo 3 columnas flexibles.
             let columnas = [
@@ -321,6 +358,11 @@ struct ContentView: View {
             }
         }
         .padding()
+        // FEATURE: timer — .onReceive escucha cada evento del Timer.
+        // "_" ignora el valor del evento (la fecha); solo nos importa que ocurrió.
+        .onReceive(reloj) { _ in
+            manejarTickDelTimer()
+        }
         // FEATURE: alert de resultado.
         // ".alert" recibe: título, binding de visibilidad, botones (actions) y mensaje.
         // "$mostrarAnuncio" es un Binding<Bool>: el "$" indica que pasamos la referencia
@@ -379,8 +421,10 @@ struct ContentView: View {
 
         } else {
 
-            // La ronda sigue: cambiamos turno.
+            // La ronda sigue: cambiamos turno y reiniciamos el timer.
+        // Es importante resetear aquí para que el siguiente jugador tenga 10s completos.
             turnoActual = turnoActual == "X" ? "O" : "X"
+            tiempoRestante = duracionTurno
         }
     }
 
@@ -462,6 +506,29 @@ struct ContentView: View {
         tablero = Array(repeating: "", count: 9)
         turnoActual = "X"
         estadoJuego = .jugando
+        // Reiniciamos el timer para que el primer jugador de la nueva ronda tenga
+        // sus 10 segundos completos desde el inicio.
+        tiempoRestante = duracionTurno
+    }
+
+    // Maneja cada tick del reloj: decrementa y castiga al jugador si llega a 0.
+    // Es privada porque es un detalle de implementación: solo ContentView la usa.
+    private func manejarTickDelTimer() {
+        // Si la ronda no está activa, el timer no corre.
+        guard estadoJuego.estaJugando else { return }
+
+        // Si la serie ya terminó, congelamos el reloj.
+        guard ganadorSerie == nil else { return }
+
+        // Reducimos un segundo en cada tick.
+        tiempoRestante -= 1
+
+        // Al llegar a 0: cambiar turno y reiniciar contador.
+        // El jugador "perdió" su turno por no jugar a tiempo.
+        if tiempoRestante <= 0 {
+            turnoActual = turnoActual == "X" ? "O" : "X"
+            tiempoRestante = duracionTurno
+        }
     }
 
     // Reinicia la serie completa: marcador, ganador de serie y ronda.
